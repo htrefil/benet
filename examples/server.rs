@@ -1,19 +1,19 @@
 use benet::{Error, Event, EventKind, Host};
-use std::net::SocketAddrV4;
 use std::process;
 use std::time::{Duration, Instant};
 
 fn run() -> Result<(), Error> {
+    const ADDR: &str = "127.0.0.1:8080";
+
     // Create a server host that will listen on 127.0.0.1:8080, with one channel
     // and a maximum of 32 peers and store the time of connection for each peer.
-    let addr = SocketAddrV4::new("127.0.0.1".parse().unwrap(), 8080);
     let mut host = Host::<Option<Instant>>::builder()
-        .addr(addr)
+        .addr(ADDR)
         .channel_limit(1)
         .peer_count(32)
         .build()?;
 
-    println!("Listening on {}", addr);
+    println!("Listening on {}", ADDR);
 
     loop {
         // Wait for an event to appear for a maximum duration of one second.

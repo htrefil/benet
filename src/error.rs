@@ -1,4 +1,5 @@
 use std::fmt::{self, Display, Formatter};
+use std::io;
 
 /// The error type potentially returned by many functions in this crate.
 #[derive(Debug)]
@@ -8,16 +9,25 @@ pub enum Error {
     Init,
     /// An invalid argument was passed to a function.
     InvalidArgument,
+    /// Standard IO error.
+    Io(io::Error),
     /// Unspecified error from ENet.
     Unknown,
+}
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self {
             Self::Init => write!(f, "Library initialization failed"),
-            Self::Unknown => write!(f, "Unspecified error"),
             Self::InvalidArgument => write!(f, "Invalid argument"),
+            Self::Io(err) => write!(f, "{}", err),
+            Self::Unknown => write!(f, "Unspecified error"),
         }
     }
 }

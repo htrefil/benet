@@ -11,9 +11,10 @@ use libc::{c_void, size_t};
 use std::any::Any;
 use std::convert::TryInto;
 use std::fmt::{self, Debug, Formatter};
+use std::io;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::net::SocketAddrV4;
+use std::net::{SocketAddr, SocketAddrV4, ToSocketAddrs};
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 use std::time::Duration;
@@ -58,11 +59,12 @@ impl<T: Default> Host<T> {
         unsafe { Ok(translate_event(event.assume_init())) }
     }
 
-    /// Initiates a connection to a foreign host.
+    /// Initiates a connection to a foreign host identified by the first IPv4 socket address resolved from `addrs`.
+    ///
     /// The peer returned will have not completed the connection until [Host::service](Host::service) notifies of an [EventKind::Connect](crate::event::EventKind::Connect) event for the peer.
     pub fn connect(
         &mut self,
-        addr: SocketAddrV4,
+        addrs: impl ToSocketAddrs,
         channel_count: usize,
         data: u32,
     ) -> Result<PeerMut<'_, T>, Error> {
@@ -70,17 +72,27 @@ impl<T: Default> Host<T> {
             return Err(Error::InvalidArgument);
         }
 
-        let addr = ENetAddress {
-            host: u32::from_ne_bytes(addr.ip().octets()),
-            port: addr.port(),
-        };
+        for addr in addrs.to_socket_addrs()? {
+            let addr = match addr {
+                SocketAddr::V4(addr) => addr,
+                SocketAddr::V6(_) => continue,
+            };
 
-        let peer = unsafe { enet_sys::enet_host_connect(self.host, &addr, channel_count, data) };
-        if peer.is_null() {
-            return Err(Error::Unknown);
+            let addr = ENetAddress {
+                host: u32::from_ne_bytes(addr.ip().octets()),
+                port: addr.port(),
+            };
+
+            let peer =
+                unsafe { enet_sys::enet_host_connect(self.host, &addr, channel_count, data) };
+            if peer.is_null() {
+                return Err(Error::Unknown);
+            }
+
+            return Ok(unsafe { PeerMut::connecting(peer) });
         }
 
-        Ok(unsafe { PeerMut::connecting(peer) })
+        Err(Error::InvalidArgument)
     }
 
     /// Sends any queued packets on the host specified to its designated peers.
@@ -195,7 +207,7 @@ impl<T> Drop for Host<T> {
 
 #[derive(Default)]
 pub struct HostBuilder<T> {
-    addr: Option<SocketAddrV4>,
+    addr: Option<Result<SocketAddrV4, io::Error>>,
     peer_count: Option<usize>,
     channel_limit: Option<usize>,
     incoming_bandwidth: Option<u32>,
@@ -205,10 +217,25 @@ pub struct HostBuilder<T> {
 }
 
 impl<T: Default> HostBuilder<T> {
-    /// The address to listen on.
+    /// The address to listen on. The first resolved IPv4 address will be used.
+    ///
     /// By default, no address is set and thus the host can't be used as a server.
-    pub fn addr(mut self, value: SocketAddrV4) -> Self {
-        self.addr = Some(value);
+    pub fn addr(mut self, value: impl ToSocketAddrs) -> Self {
+        let addrs = match value.to_socket_addrs() {
+            Ok(addrs) => addrs,
+            Err(err) => {
+                self.addr = Some(Err(err));
+                return self;
+            }
+        };
+
+        for addr in addrs {
+            if let SocketAddr::V4(addr) = addr {
+                self.addr = Some(Ok(addr));
+                break;
+            }
+        }
+
         self
     }
 
@@ -252,7 +279,13 @@ impl<T: Default> HostBuilder<T> {
 
     /// Try to create a host based on the configuration.
     pub fn build(self) -> Result<Host<T>, Error> {
-        let addr = self.addr.map(|addr| ENetAddress {
+        let addr = match self.addr {
+            Some(Ok(addr)) => Some(addr),
+            Some(Err(err)) => return Err(err.into()),
+            None => None,
+        };
+
+        let addr = addr.map(|addr| ENetAddress {
             host: u32::from_ne_bytes(addr.ip().octets()),
             port: addr.port(),
         });
