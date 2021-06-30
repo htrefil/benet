@@ -156,9 +156,9 @@ impl Flags {
 impl Debug for Flags {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("Flags")
-            .field("reliable", &self.reliable())
-            .field("unsequenced", &self.unsequenced())
-            .field("unreliable_fragment", &self.unreliable_fragment())
+            .field("reliable", &self.is_reliable())
+            .field("unsequenced", &self.is_unsequenced())
+            .field("unreliable_fragment", &self.is_unreliable_fragment())
             .finish()
     }
 }
