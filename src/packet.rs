@@ -32,7 +32,7 @@ impl Packet {
         let guard = InitGuard::new()?;
         let packet = unsafe {
             enet_sys::enet_packet_create(
-                &data as *const _ as *const _,
+                data.as_slice().as_ptr() as *const _,
                 data.len(),
                 flags.flags | enet_sys::_ENetPacketFlag_ENET_PACKET_FLAG_NO_ALLOCATE,
             )
