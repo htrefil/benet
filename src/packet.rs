@@ -22,7 +22,10 @@ impl Packet {
     }
 
     pub(crate) unsafe fn into_raw(self) -> *mut ENetPacket {
-        self.packet
+        let packet = self.packet;
+        mem::forget(self);
+
+        packet
     }
 
     /// Creates a new packet.
