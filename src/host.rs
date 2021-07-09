@@ -19,7 +19,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
 use std::time::Duration;
 
-pub const MAXIMUM_CHANNEL_COUNT: usize = enet_sys::ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT as usize;
+pub const CHANNEL_COUNT_MAX: usize = enet_sys::ENET_PROTOCOL_MAXIMUM_CHANNEL_COUNT as usize;
 
 /// The host structure used for communicating with other peers.
 pub struct Host<T> {
@@ -63,7 +63,7 @@ impl<T: Default> Host<T> {
 
     /// Initiates a connection to a foreign host identified by the first IPv4 socket address resolved from `addrs`.
     ///
-    /// The peer returned will have not completed the connection until [Host::service](Host::service) notifies of an [EventKind::Connect](crate::event::EventKind::Connect) event for the peer.
+    /// The peer returned will have not completed the connection until [`Host::service`] notifies of an [`EventKind::Connect`] event for the peer.
     pub fn connect(
         &mut self,
         addrs: impl ToSocketAddrs,
@@ -98,7 +98,7 @@ impl<T: Default> Host<T> {
     }
 
     /// Sends any queued packets on the host specified to its designated peers.
-    // This function need only be used in circumstances where one wishes to send queued packets earlier than in a call to Host::service().
+    // This function need only be used in circumstances where one wishes to send queued packets earlier than in a call to [`Host::service()`].
     pub fn flush(&mut self) {
         unsafe {
             enet_sys::enet_host_flush(self.host);
@@ -274,7 +274,7 @@ impl<T: Default> HostBuilder<T> {
         self
     }
 
-    /// The maximum number of channels to allocate for the host. Default is [MAXIMUM_CHANNEL_COUNT](MAXIMUM_CHANNEL_COUNT).
+    /// The maximum number of channels to allocate for the host. Default is [`CHANNEL_COUNT_MAX`].
     ///
     /// The value has to be non-zero.
     pub fn channel_limit(mut self, value: usize) -> Self {

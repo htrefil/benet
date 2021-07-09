@@ -19,7 +19,7 @@ impl From<io::Error> for Error {
 pub trait Compressor {
     /// Compress input buffers into an output buffer.
     ///
-    /// Not writing anything into the output buffer will cause [Host::service](crate::host::Host::service) and similar methods to return an error.
+    /// Not writing anything into the output buffer will cause [`Host::service`](crate::host::Host::service) and similar methods to return an error.
     fn compress(
         &mut self,
         input_buffers: &[InputBuffer],
@@ -28,7 +28,7 @@ pub trait Compressor {
 
     /// Decompress input buffers into an output buffer.
     ///
-    /// Not writing anything into the output buffer will cause [Host::service](crate::host::Host::service) and similar methods to return an error.
+    /// Not writing anything into the output buffer will cause [`Host::service`](crate::host::Host::service) and similar methods to return an error.
     fn decompress(
         &mut self,
         input_buffers: &[InputBuffer],
@@ -58,7 +58,7 @@ impl AsRef<[u8]> for InputBuffer {
     }
 }
 
-/// (De)compression output buffer. Use the <std::io::Write> implementation to write processed data.
+/// (De)compression output buffer. Use the [`std::io::Write`] implementation to write processed data.
 pub struct OutputBuffer {
     pub(crate) buffer: *mut u8,
     pub(crate) length: usize,
