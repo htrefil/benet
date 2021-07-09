@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::event::{Event, EventKind};
 use crate::init::InitGuard;
 use crate::packet::Packet;
-use crate::peer::{Peer, PeerMut};
+use crate::peer::{self, Peer, PeerMut};
 
 use core::slice;
 use enet_sys::{ENetAddress, ENetBuffer, ENetCompressor, ENetEvent, ENetHost};
@@ -23,10 +23,12 @@ pub const MAXIMUM_CHANNEL_COUNT: usize = enet_sys::ENET_PROTOCOL_MAXIMUM_CHANNEL
 
 /// The host structure used for communicating with other peers.
 pub struct Host<T> {
-    host: *mut ENetHost,
+    // Order is important here.
+    // The host pointer has to be destroyed before the init guard.
+    guard: InitGuard,
     compressor_ctx: Box<CompressorCtx>,
+    host: *mut ENetHost,
     _marker: PhantomData<T>,
-    _guard: InitGuard,
 }
 
 impl<T: Default> Host<T> {
@@ -56,7 +58,7 @@ impl<T: Default> Host<T> {
             return Ok(None);
         }
 
-        unsafe { Ok(translate_event(event.assume_init())) }
+        unsafe { Ok(self.translate_event(event.assume_init())) }
     }
 
     /// Initiates a connection to a foreign host identified by the first IPv4 socket address resolved from `addrs`.
@@ -89,7 +91,7 @@ impl<T: Default> Host<T> {
                 return Err(Error::Unknown);
             }
 
-            return Ok(unsafe { PeerMut::connecting(peer) });
+            return Ok(unsafe { PeerMut::from_raw(peer, false) });
         }
 
         Err(Error::InvalidArgument)
@@ -120,7 +122,7 @@ impl<T: Default> Host<T> {
             return Err(Error::Unknown);
         }
 
-        Ok(unsafe { translate_event(event.assume_init()) })
+        Ok(unsafe { self.translate_event(event.assume_init()) })
     }
 
     /// Creates an iterator over all currently connected peers.
@@ -140,7 +142,7 @@ impl<T: Default> Host<T> {
         unsafe { slice::from_raw_parts_mut(host.peers, host.peerCount) }
             .iter_mut()
             .filter(|peer| !peer.data.is_null())
-            .map(|peer| unsafe { PeerMut::from_raw(peer) })
+            .map(|peer| unsafe { PeerMut::from_raw(peer, false) })
     }
 
     fn panic_check(&mut self) {
@@ -183,6 +185,31 @@ impl<T: Default> Host<T> {
 
         Ok(())
     }
+
+    unsafe fn translate_event(&self, event: ENetEvent) -> Option<Event<'_, T>> {
+        let (kind, peer) = match event.type_ {
+            enet_sys::_ENetEventType_ENET_EVENT_TYPE_NONE => return None,
+            enet_sys::_ENetEventType_ENET_EVENT_TYPE_CONNECT => (
+                EventKind::Connect(event.data),
+                PeerMut::from_raw(event.peer, false),
+            ),
+            enet_sys::_ENetEventType_ENET_EVENT_TYPE_DISCONNECT => (
+                EventKind::Disconnect(event.data),
+                PeerMut::from_raw(event.peer, true),
+            ),
+            enet_sys::_ENetEventType_ENET_EVENT_TYPE_RECEIVE => (
+                EventKind::Receive(Packet::from_raw(
+                    event.packet,
+                    event.channelID,
+                    self.guard.clone(),
+                )),
+                PeerMut::from_raw(event.peer, false),
+            ),
+            _ => unreachable!(),
+        };
+
+        Some(Event { peer, kind })
+    }
 }
 
 impl<T: Debug + Default> Debug for Host<T> {
@@ -197,7 +224,7 @@ impl<T> Drop for Host<T> {
             let host = &*self.host;
 
             for i in 0..host.peerCount {
-                PeerMut::<T>::disconnecting(host.peers.add(i));
+                peer::drop_data::<T>(host.peers.add(i));
             }
 
             enet_sys::enet_host_destroy(self.host);
@@ -332,13 +359,13 @@ impl<T: Default> HostBuilder<T> {
         }
 
         let mut host = Host {
-            host,
+            guard,
             compressor_ctx: Box::new(CompressorCtx {
                 compressor: None,
                 panic: None,
             }),
+            host,
             _marker: PhantomData,
-            _guard: guard,
         };
 
         host.set_compressor(self.compressor_kind)?;
@@ -436,24 +463,3 @@ unsafe extern "C" fn decompress(
 }
 
 unsafe extern "C" fn destroy(_context: *mut c_void) {}
-
-unsafe fn translate_event<'a, T: Default>(event: ENetEvent) -> Option<Event<'a, T>> {
-    let (kind, peer) = match event.type_ {
-        enet_sys::_ENetEventType_ENET_EVENT_TYPE_NONE => return None,
-        enet_sys::_ENetEventType_ENET_EVENT_TYPE_CONNECT => (
-            EventKind::Connect(event.data),
-            PeerMut::connecting(event.peer),
-        ),
-        enet_sys::_ENetEventType_ENET_EVENT_TYPE_DISCONNECT => (
-            EventKind::Disconnect(event.data),
-            PeerMut::disconnecting(event.peer),
-        ),
-        enet_sys::_ENetEventType_ENET_EVENT_TYPE_RECEIVE => (
-            EventKind::Receive(Packet::from_raw(event.packet, event.channelID).unwrap()),
-            PeerMut::from_raw(event.peer),
-        ),
-        _ => unreachable!(),
-    };
-
-    Some(Event { peer, kind })
-}

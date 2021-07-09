@@ -28,6 +28,14 @@ impl InitGuard {
     }
 }
 
+impl Clone for InitGuard {
+    fn clone(&self) -> Self {
+        *REF_COUNT.lock() += 1;
+
+        Self(())
+    }
+}
+
 impl Drop for InitGuard {
     fn drop(&mut self) {
         let mut ref_count = REF_COUNT.lock();

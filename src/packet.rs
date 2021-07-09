@@ -13,12 +13,16 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub(crate) unsafe fn from_raw(packet: *mut ENetPacket, channel_id: u8) -> Result<Self, Error> {
-        Ok(Self {
+    pub(crate) unsafe fn from_raw(
+        packet: *mut ENetPacket,
+        channel_id: u8,
+        guard: InitGuard,
+    ) -> Self {
+        Self {
             packet,
             channel_id,
-            _guard: InitGuard::new()?,
-        })
+            _guard: guard,
+        }
     }
 
     pub(crate) unsafe fn into_raw(self) -> *mut ENetPacket {
@@ -51,7 +55,7 @@ impl Packet {
 
         mem::forget(data);
 
-        Ok(Packet {
+        Ok(Self {
             packet,
             channel_id,
             _guard: guard,
