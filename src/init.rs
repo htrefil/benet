@@ -1,14 +1,14 @@
 use crate::error::Error;
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 
-static REF_COUNT: Mutex<usize> = parking_lot::const_mutex(0);
+static REF_COUNT: Mutex<usize> = Mutex::new(0);
 
 pub struct InitGuard(());
 
 impl InitGuard {
     pub fn new() -> Result<Self, Error> {
-        let mut ref_count = REF_COUNT.lock();
+        let mut ref_count = REF_COUNT.lock().unwrap();
         if *ref_count != 0 {
             *ref_count += 1;
             return Ok(Self(()));
@@ -30,7 +30,7 @@ impl InitGuard {
 
 impl Clone for InitGuard {
     fn clone(&self) -> Self {
-        *REF_COUNT.lock() += 1;
+        *REF_COUNT.lock().unwrap() += 1;
 
         Self(())
     }
@@ -38,7 +38,7 @@ impl Clone for InitGuard {
 
 impl Drop for InitGuard {
     fn drop(&mut self) {
-        let mut ref_count = REF_COUNT.lock();
+        let mut ref_count = REF_COUNT.lock().unwrap();
         *ref_count -= 1;
 
         if *ref_count == 0 {

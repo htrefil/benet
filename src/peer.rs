@@ -320,7 +320,8 @@ impl PeerInfo<'_> {
 pub(crate) unsafe fn drop_data<T>(peer: *mut ENetPeer) {
     let peer = &mut *peer;
     if !peer.data.is_null() {
-        Box::from_raw(peer.data as *mut T);
+        // Drop the data.
+        let _ = Box::from_raw(peer.data as *mut T);
         peer.data = ptr::null_mut();
     }
 }
