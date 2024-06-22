@@ -126,23 +126,19 @@ impl<T: Default> Host<T> {
     }
 
     /// Creates an iterator over all currently connected peers.
-    pub fn peers(&self) -> impl Iterator<Item = Peer<'_, T>> {
-        let host = unsafe { &*self.host };
-
-        unsafe { slice::from_raw_parts(host.peers, host.peerCount) }
-            .iter()
-            .filter(|peer| !peer.data.is_null())
-            .map(|peer| unsafe { Peer::from_raw(peer) })
+    pub fn peers(&self) -> Peers<'_, T> {
+        Peers {
+            host: self,
+            index: 0,
+        }
     }
 
     /// Creates an iterator over all currently connected peers.
-    pub fn peers_mut(&mut self) -> impl Iterator<Item = PeerMut<'_, T>> {
-        let host = unsafe { &mut *self.host };
-
-        unsafe { slice::from_raw_parts_mut(host.peers, host.peerCount) }
-            .iter_mut()
-            .filter(|peer| !peer.data.is_null())
-            .map(|peer| unsafe { PeerMut::from_raw(peer, false) })
+    pub fn peers_mut(&mut self) -> PeersMut<'_, T> {
+        PeersMut {
+            host: self,
+            index: 0,
+        }
     }
 
     fn panic_check(&mut self) {
@@ -189,10 +185,17 @@ impl<T: Default> Host<T> {
     unsafe fn translate_event(&self, event: ENetEvent) -> Option<Event<'_, T>> {
         let (kind, peer) = match event.type_ {
             enet_sys::_ENetEventType_ENET_EVENT_TYPE_NONE => return None,
-            enet_sys::_ENetEventType_ENET_EVENT_TYPE_CONNECT => (
-                EventKind::Connect(event.data),
-                PeerMut::from_raw(event.peer, false),
-            ),
+            enet_sys::_ENetEventType_ENET_EVENT_TYPE_CONNECT => {
+                let peer = &mut *event.peer;
+                if peer.data.is_null() {
+                    peer.data = Box::leak(Box::new(T::default())) as *mut _ as *mut _;
+                }
+
+                (
+                    EventKind::Connect(event.data),
+                    PeerMut::from_raw(event.peer, false),
+                )
+            }
             enet_sys::_ENetEventType_ENET_EVENT_TYPE_DISCONNECT => (
                 EventKind::Disconnect(event.data),
                 PeerMut::from_raw(event.peer, true),
@@ -371,6 +374,62 @@ impl<T: Default> HostBuilder<T> {
         host.set_compressor(self.compressor_kind)?;
 
         Ok(host)
+    }
+}
+
+/// An iterator over all currently connected peers.
+pub struct Peers<'a, T> {
+    host: &'a Host<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for Peers<'a, T> {
+    type Item = Peer<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let host = unsafe { &*self.host.host };
+        loop {
+            if self.index >= host.peerCount {
+                return None;
+            }
+
+            let peer = unsafe { host.peers.add(self.index) };
+            self.index += 1;
+
+            if unsafe { (*peer).data.is_null() } {
+                continue;
+            }
+
+            return Some(unsafe { Peer::from_raw(peer) });
+        }
+    }
+}
+
+/// An iterator over all currently connected peers.
+pub struct PeersMut<'a, T> {
+    host: &'a mut Host<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for PeersMut<'a, T> {
+    type Item = PeerMut<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let host = unsafe { &mut *self.host.host };
+        loop {
+            if self.index >= host.peerCount {
+                return None;
+            }
+
+            let peer = unsafe { host.peers.add(self.index) };
+            self.index += 1;
+
+            if unsafe { (*peer).data.is_null() } {
+                continue;
+            }
+
+            return Some(unsafe { PeerMut::from_raw(peer, false) });
+        }
     }
 }
 

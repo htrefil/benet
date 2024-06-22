@@ -70,13 +70,8 @@ pub struct PeerMut<'a, T> {
     _host: PhantomData<&'a mut Host<T>>,
 }
 
-impl<T: Default> PeerMut<'_, T> {
+impl<T> PeerMut<'_, T> {
     pub(crate) unsafe fn from_raw(peer: *mut ENetPeer, disconnecting: bool) -> Self {
-        let peer = &mut *peer;
-        if peer.data.is_null() {
-            peer.data = Box::leak(Box::new(T::default())) as *mut _ as *mut _;
-        }
-
         Self {
             peer,
             disconnecting,
